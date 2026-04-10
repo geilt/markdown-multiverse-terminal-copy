@@ -1,20 +1,42 @@
-# Copy Tool for VS Code
+# Markdown Multiverse — Terminal Copy Tool
 
-Right-click in the integrated terminal to copy selected output **cleanly** — strips ANSI color codes, resolves carriage-return overwrites and backspace overprinting, trims trailing whitespace, dedents, and reflows wrapped prose.
+Right-click in the VS Code integrated terminal to copy selected output, **cleaned up and formatted for wherever you're pasting it**: Markdown, Slack, Discord, Telegram, HTML, or plain.
 
-Inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html), but built directly into VS Code so you never leave the editor.
+Terminal output is usually ugly — ANSI colors, progress-bar overwrites, tab stops, wrapped prose, trailing whitespace. Markdown Multiverse strips all that **and** picks the right wrapping for the destination: code fences for chat apps, `<pre><code>` + `<table>` for HTML, pipe tables for Markdown, and so on.
+
+Inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html), built directly into VS Code.
 
 ## Usage
 
 1. Select text in any integrated terminal.
-2. Right-click → **Copy Tool: Copy Clean**.
-3. Paste anywhere — the output is already cleaned up.
+2. Right-click → **Copy As** → pick your destination.
+3. Paste anywhere.
 
-## What it cleans
+### Formats
+
+| Format | What it does |
+|--------|--------------|
+| **Clean** | Pure cleaned plain text. No wrapping. |
+| **Markdown** | Fences code, preserves detected pipe tables, leaves prose alone. |
+| **Slack** | Fences everything in ``` ``` ``` for Slack's `mrkdwn`. |
+| **Discord** | Fences everything; uses `diff` language hint when diff output is detected. |
+| **Telegram** | Fences for MarkdownV2, escapes reserved backticks and backslashes. |
+| **HTML** | `<table>` for tables, `<pre><code>` for code, `<p>` for prose — all entity-escaped. |
+
+### Content detection
+
+The extension runs the cleaned text through a small classifier that recognizes:
+
+- **Pipe tables** (including box-drawing tables already converted during cleanup) — HTML renders as real `<table>`, Markdown passes through.
+- **Diff output** (unified diff with `@@` hunks or `-` / `+` prefix lines) — Discord adds a `diff` language hint.
+- **Prose paragraphs** — HTML wraps in `<p>`, Markdown passes through unfenced.
+- **Code / terminal output** (the default) — fenced in code blocks for every chat target.
+
+## What gets cleaned
 
 - **ANSI escape codes** — SGR colors, cursor movement, OSC title sequences, bracketed paste markers.
 - **Carriage-return overwrites** — progress bars and spinners collapse to their final state.
-- **Backspace overprinting** — man-page bold/underline rendering becomes plain text.
+- **Backspace overprinting** — man-page bold/underline becomes plain text.
 - **Trailing whitespace** — per-line trim.
 - **Tab normalization** — tabs become consistent spaces (configurable).
 - **Common indentation** — shared leading whitespace gets dedented.
@@ -26,13 +48,12 @@ Inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `vscodeCopyTool.stripPrompts` | `false` | Strip common shell prompt prefixes (`user@host:~$`, `PS C:\>`, `>>>`, `$`, `#`). Destructive — may affect non-prompt content matching these patterns. |
-| `vscodeCopyTool.tabWidth` | `4` | Number of spaces to substitute for tab characters. |
+| `markdownMultiverse.stripPrompts` | `false` | Strip common shell prompt prefixes (`user@host:~$`, `PS C:\>`, `>>>`, `$`). Destructive. |
+| `markdownMultiverse.tabWidth` | `4` | Number of spaces to substitute for tab characters. |
 
 ## Roadmap
 
-- **v2** — Copy for Slack, Copy for Telegram (target-specific formatting).
-- **v3** — Copy as Prompt, Send to LLM (Anthropic / OpenAI / Ollama), Copy for ChatGPT / Claude / GitHub Issue / Jira.
+- **v3** — Copy as Prompt (user-defined LLM prompt templates), Send to LLM (Anthropic / OpenAI / Ollama), target-specific copy (GitHub Issue, Jira).
 
 See [`docs/spec/README.md`](docs/spec/README.md) for the full design.
 
@@ -44,7 +65,7 @@ npm run compile
 npm test
 ```
 
-Press <kbd>F5</kbd> to launch an Extension Development Host.
+Press <kbd>F5</kbd> in VS Code to launch an Extension Development Host with the extension loaded.
 
 ## License
 

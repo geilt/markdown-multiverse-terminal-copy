@@ -1,58 +1,120 @@
 {
-  "name": "vscode-copy-tool",
-  "displayName": "Copy Tool",
-  "description": "Right-click in the terminal to copy selected output cleanly — strips ANSI codes, resolves carriage-return overwrites and backspace overprinting, trims trailing whitespace, dedents, and reflows wrapped prose.",
-  "version": "0.0.1",
+  "name": "markdown-multiverse-terminal-copy",
+  "displayName": "Markdown Multiverse - Terminal Copy Tool",
+  "description": "Right-click in the terminal to copy selected output as Clean, Markdown, Slack, Telegram, Discord, or HTML. Strips ANSI, resolves carriage-return overwrites and backspace overprinting, detects tables, and formats for each destination.",
+  "version": "0.1.0",
   "publisher": "geilt",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/geilt/vscode-copy-tool.git"
+    "url": "https://github.com/geilt/markdown-multiverse-terminal-copy.git"
   },
   "bugs": {
-    "url": "https://github.com/geilt/vscode-copy-tool/issues"
+    "url": "https://github.com/geilt/markdown-multiverse-terminal-copy/issues"
   },
-  "homepage": "https://github.com/geilt/vscode-copy-tool#readme",
+  "homepage": "https://github.com/geilt/markdown-multiverse-terminal-copy#readme",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Formatters"
   ],
   "keywords": [
     "terminal",
     "clipboard",
     "copy",
     "ansi",
-    "cleanup"
+    "markdown",
+    "slack",
+    "discord",
+    "telegram",
+    "html"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "vscodeCopyTool.copyClean",
-        "title": "Copy Clean",
-        "category": "Copy Tool"
+        "command": "markdownMultiverse.copyClean",
+        "title": "Copy as Clean",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.copyMarkdown",
+        "title": "Copy as Markdown",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.copySlack",
+        "title": "Copy as Slack",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.copyTelegram",
+        "title": "Copy as Telegram",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.copyDiscord",
+        "title": "Copy as Discord",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.copyHtml",
+        "title": "Copy as HTML",
+        "category": "Markdown Multiverse"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "markdownMultiverse.copyAs",
+        "label": "Copy As"
       }
     ],
     "menus": {
       "terminal/context": [
         {
-          "command": "vscodeCopyTool.copyClean",
+          "submenu": "markdownMultiverse.copyAs",
           "group": "3_edit@10"
+        }
+      ],
+      "markdownMultiverse.copyAs": [
+        {
+          "command": "markdownMultiverse.copyClean",
+          "group": "1_formats@1"
+        },
+        {
+          "command": "markdownMultiverse.copyMarkdown",
+          "group": "1_formats@2"
+        },
+        {
+          "command": "markdownMultiverse.copySlack",
+          "group": "1_formats@3"
+        },
+        {
+          "command": "markdownMultiverse.copyDiscord",
+          "group": "1_formats@4"
+        },
+        {
+          "command": "markdownMultiverse.copyTelegram",
+          "group": "1_formats@5"
+        },
+        {
+          "command": "markdownMultiverse.copyHtml",
+          "group": "1_formats@6"
         }
       ]
     },
     "configuration": {
-      "title": "Copy Tool",
+      "title": "Markdown Multiverse",
       "properties": {
-        "vscodeCopyTool.stripPrompts": {
+        "markdownMultiverse.stripPrompts": {
           "type": "boolean",
           "default": false,
-          "description": "Strip common shell prompt prefixes (user@host:~$, PS C:\\>, >>>, $ ). Destructive — may remove non-prompt content that matches these patterns."
+          "description": "Strip common shell prompt prefixes (user@host:~$, PS C:\\>, >>>, $). Destructive — may remove non-prompt content that matches these patterns."
         },
-        "vscodeCopyTool.tabWidth": {
+        "markdownMultiverse.tabWidth": {
           "type": "number",
           "default": 4,
           "description": "Number of spaces to substitute for tab characters."

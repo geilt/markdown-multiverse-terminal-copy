@@ -1,12 +1,16 @@
 import * as vscode from 'vscode';
 import { clean, CleanOptions } from './clean';
+import { toPlain } from './formats/plain';
+import { toMarkdown } from './formats/markdown';
+import { toSlack } from './formats/slack';
+import { toTelegram } from './formats/telegram';
+import { toDiscord } from './formats/discord';
+import { toHtml } from './formats/html';
 
 type Formatter = (cleaned: string) => string;
 
-const plain: Formatter = (s) => s;
-
-async function copyViaPipeline(format: Formatter): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration('vscodeCopyTool');
+async function copyViaPipeline(label: string, format: Formatter): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration('markdownMultiverse');
   const opts: CleanOptions = {
     stripPrompts: cfg.get<boolean>('stripPrompts', false),
     tabWidth: cfg.get<number>('tabWidth', 4)
@@ -17,19 +21,30 @@ async function copyViaPipeline(format: Formatter): Promise<void> {
   const raw = await vscode.env.clipboard.readText();
 
   if (raw === before) {
-    vscode.window.setStatusBarMessage('$(info) Copy Tool: no terminal selection', 2000);
+    vscode.window.setStatusBarMessage('$(info) Markdown Multiverse: no terminal selection', 2000);
     return;
   }
 
   const cleaned = format(clean(raw, opts));
   await vscode.env.clipboard.writeText(cleaned);
-  vscode.window.setStatusBarMessage('$(check) Copy Tool: copied clean text', 2000);
+  vscode.window.setStatusBarMessage(`$(check) Markdown Multiverse: copied as ${label}`, 2000);
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vscodeCopyTool.copyClean', () => copyViaPipeline(plain))
-  );
+  const commands: Array<[string, string, Formatter]> = [
+    ['markdownMultiverse.copyClean', 'Clean', toPlain],
+    ['markdownMultiverse.copyMarkdown', 'Markdown', toMarkdown],
+    ['markdownMultiverse.copySlack', 'Slack', toSlack],
+    ['markdownMultiverse.copyTelegram', 'Telegram', toTelegram],
+    ['markdownMultiverse.copyDiscord', 'Discord', toDiscord],
+    ['markdownMultiverse.copyHtml', 'HTML', toHtml]
+  ];
+
+  for (const [id, label, formatter] of commands) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(id, () => copyViaPipeline(label, formatter))
+    );
+  }
 }
 
 export function deactivate(): void {

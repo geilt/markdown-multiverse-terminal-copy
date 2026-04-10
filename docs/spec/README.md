@@ -1,120 +1,154 @@
-# vscode-copy-tool — Specification
+# Markdown Multiverse — Terminal Copy Tool
 
 ## Context
 
-Terminal output pasted into docs, issues, chat, or AI tools is usually ugly: ANSI color codes, carriage-return overwrites from spinners/progress bars, trailing whitespace, backspace overprinting from man pages, box-drawing tables, and soft-wrapped prose. The web tool at [missionsystems.co.uk/tools/terminal-text-fixer.html](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html) solves this by running text through a pipeline of cleanups. This project ports that pipeline into a VS Code extension so users can **right-click a terminal selection and copy it cleanly in one step**, without leaving the editor.
+Terminal output pasted into docs, issues, chat, or AI tools is usually ugly: ANSI color codes, carriage-return overwrites from spinners/progress bars, trailing whitespace, backspace overprinting from man pages, box-drawing tables, and soft-wrapped prose.
+
+The web tool at [missionsystems.co.uk/tools/terminal-text-fixer.html](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html) solves the cleanup problem. This project ports that pipeline into VS Code **and** extends it: instead of just one cleaned variant, the extension offers a submenu of destination-aware formats (Markdown, Slack, Discord, Telegram, HTML), each of which wraps the cleaned text appropriately for where it's going.
+
+Published open source at [github.com/geilt/markdown-multiverse-terminal-copy](https://github.com/geilt/markdown-multiverse-terminal-copy) and on the VS Code Marketplace.
 
 ## Phased scope
 
-- **v1** — validate the core flow: right-click terminal selection → clean copy to clipboard. One command, one pipeline.
-- **v2** — format variants: Copy for Slack, Copy for Telegram (wrap in code fences, escape target-specific reserved chars).
-- **v3** — LLM/chat piping: Copy as Prompt, Send to LLM, Copy for ChatGPT / Copy for Claude. See **Future roadmap** below.
-
-Published open source at [github.com/geilt/vscode-copy-tool](https://github.com/geilt/vscode-copy-tool) and on the VS Code Marketplace.
+- **v1 (0.0.1)** — validate the core flow: right-click → clean copy to clipboard. One command, one pipeline. ✅
+- **v2 (0.1.0)** — `Copy As` submenu with 6 format variants (Clean, Markdown, Slack, Discord, Telegram, HTML) plus content classification (table / diff / prose / code). ✅
+- **v3** — LLM/chat piping: Copy as Prompt, Send to LLM, target-specific copy (GitHub Issue, Jira, ChatGPT, Claude). See **Future roadmap** below.
 
 ## Feasibility: how we read terminal selections
 
 VS Code's stable API does **not** expose terminal selection text directly (tracking issue [microsoft/vscode#188173](https://github.com/microsoft/vscode/issues/188173)). The marketplace-safe workaround:
 
-1. User right-clicks a terminal selection → picks our command.
+1. User right-clicks a terminal selection → picks a command from the **Copy As** submenu.
 2. Extension snapshots the current clipboard (`before`).
 3. Extension runs the built-in command `workbench.action.terminal.copySelection`.
 4. Extension reads `vscode.env.clipboard.readText()` (`raw`).
 5. If `raw === before`, nothing was selected — bail with a status message, clipboard untouched.
-6. Otherwise, run `raw` through the cleanup pipeline, optionally wrap it for a target format, and write the result back with `vscode.env.clipboard.writeText()`.
-7. Show a brief status-bar message.
+6. Otherwise, run `raw` through `clean()`, then through the selected format, then write the result back with `vscode.env.clipboard.writeText()`.
+7. Show a brief status-bar message naming the chosen format.
 
-This uses only stable API, so the extension is marketplace-publishable. Menu registration uses the `terminal/context` contribution point, placing items in the terminal right-click menu under group `3_edit`.
+This uses only stable API. Menu registration uses the `terminal/context` contribution point with a nested `contributes.submenus` entry named `markdownMultiverse.copyAs`.
+
+## Architecture
+
+```
+raw terminal selection
+        │
+        ▼
+    clean(raw)           ← src/clean.ts — pure pipeline (no vscode deps)
+        │
+        ▼
+    detect(cleaned)      ← src/detect.ts — classifier
+        │
+        ▼
+    format(cleaned)      ← src/formats/{plain,markdown,slack,discord,telegram,html}.ts
+        │
+        ▼
+  clipboard.writeText
+```
+
+`clean.ts` and `detect.ts` have **zero VS Code imports** so they are trivially testable (pure `node --test`) and reusable by future v3 features (prompt wrapping, LLM calls, history).
 
 ## The cleanup pipeline (`src/clean.ts`)
 
-Each step is a pure `(string) => string` function composed in order:
+Each step is a pure `(string) => string` composed in order:
 
-1. `stripAnsi` — remove SGR color/style codes, cursor movement, OSC title sequences, and bracketed paste mode markers.
-2. `resolveCarriageReturns` — for each line, simulate overwrite behavior of `\r` so progress bars and spinners collapse to their final state.
+1. `stripAnsi` — SGR color/style codes, cursor movement, OSC title sequences, bracketed paste markers.
+2. `resolveCarriageReturns` — simulate `\r` overwrite so progress bars and spinners collapse to their final state.
 3. `resolveBackspaces` — walk characters; `\b` deletes the previous char (resolves man-page bold/underline overprinting).
 4. `stripQuoteMarkers` — remove the `▎` U+258E block-quote character Claude inserts in quoted responses.
-5. `normalizeTabs` — replace `\t` with N spaces (`tabWidth` setting, default 4).
-6. `stripTrailingWhitespace` — per-line trim of trailing spaces and tabs.
-7. `stripPrompts` *(optional, off by default)* — remove common shell prompts (`user@host:~$`, `PS C:\>`, `>>>`, `$`, `#`).
-8. `dedentCommon` — detect the largest common leading-whitespace prefix across non-blank lines and strip it if the majority share it.
-9. `convertBoxTables` — detect Unicode box-drawing blocks and convert them into Markdown pipe tables. Passthrough on any parse failure.
-10. `reflowParagraphs` — rejoin soft-wrapped prose lines, but **skip** blocks that look like diffs (`+`, `-`, `@@`), code (≥4-space indent), gutter-numbered output (`1:`, `1|`), lists, headings, or table rows.
+5. `normalizeTabs` — replace `\t` with N spaces (default 4).
+6. `stripTrailingWhitespace` — per-line trim.
+7. `stripPrompts` *(optional)* — remove common shell prompts. Off by default.
+8. `dedentCommon` — strip the largest common leading-whitespace prefix if the majority of lines share it.
+9. `convertBoxTables` — detect Unicode box-drawing blocks and convert them into Markdown pipe tables.
+10. `reflowParagraphs` — rejoin soft-wrapped prose while preserving diffs, code, gutter-numbered output, lists, headings, and table rows.
 11. Collapse runs of 3+ blank lines to 2, then `trimEnd()`.
 
-The module has **zero VS Code imports** so it stays trivially testable and reusable by future v3 features (prompt wrapping, LLM calls, history).
-
-Public surface:
+## The classifier (`src/detect.ts`)
 
 ```ts
-export function clean(raw: string, opts?: {
-  stripPrompts?: boolean;
-  tabWidth?: number;
-}): string;
+export type ContentKind = 'table' | 'diff' | 'code' | 'prose';
+export function detect(text: string): { kind: ContentKind };
 ```
 
-## Commands and menu wiring
+Detection order:
 
-### v1
+1. **Table** — every non-blank line matches `^\s*\|.*\|\s*$` AND at least one line is a separator (`| --- |`).
+2. **Diff** — contains a unified-diff hunk header (`@@ -X,Y +X,Y @@`), or 2+ lines start with `+ ` / `- ` and they're ≥50% of the content.
+3. **Prose** — 2+ lines, >50% of lines start with a capital letter and end with `.`, `!`, or `?`.
+4. **Code** — default (almost all terminal output).
 
-| Command | Title | Terminal menu group |
-|---------|-------|---------------------|
-| `vscodeCopyTool.copyClean` | Copy Tool: Copy Clean | `3_edit@10` |
+The thresholds are tuned so `ls -la` (which has many `-rw-r--r--` lines) classifies as **code**, not **diff**.
 
-### v2 (planned)
+## The formats (`src/formats/*.ts`)
 
-| Command | Title | Terminal menu group |
-|---------|-------|---------------------|
-| `vscodeCopyTool.copyForSlack` | Copy Tool: Copy for Slack | `3_edit@11` |
-| `vscodeCopyTool.copyForTelegram` | Copy Tool: Copy for Telegram | `3_edit@12` |
+Each format is a pure `(cleaned: string) => string` function. They dispatch on `detect(cleaned).kind`:
+
+| Format | Table | Diff | Code | Prose |
+|--------|-------|------|------|-------|
+| **plain** | passthrough | passthrough | passthrough | passthrough |
+| **markdown** | passthrough (already a pipe table) | ``` fence | ``` fence | passthrough |
+| **slack** | ``` fence | ``` fence | ``` fence | ``` fence |
+| **discord** | ``` fence | ```diff fence | ``` fence | ``` fence |
+| **telegram** | ``` fence + escape | ``` fence + escape | ``` fence + escape | ``` fence + escape |
+| **html** | `<table>` | `<pre><code>` | `<pre><code>` | `<p>` |
+
+Details:
+
+- **markdown** bumps to ```` when the cleaned content already contains ``` to avoid premature fence closure.
+- **slack** always fences — Slack's `mrkdwn` doesn't support tables at all, so the best rendering for tabular terminal output is a monospace code block.
+- **discord** adds a `diff` language hint when the classifier sees diff content (Discord renders diff syntax with colors).
+- **telegram** uses MarkdownV2 fenced code blocks. Inside a fence, only ``` and `\` need escaping — reserved prose chars don't apply inside code.
+- **html** entity-escapes `& < > " '`. For tables, parses Markdown pipe rows and emits `<table><thead><tr><th>` / `<tbody><tr><td>`. For prose, splits on blank lines and wraps each block in `<p>`.
+
+## Commands, submenu, and settings
+
+### Commands
+
+| Command | Title |
+|---------|-------|
+| `markdownMultiverse.copyClean` | Markdown Multiverse: Copy as Clean |
+| `markdownMultiverse.copyMarkdown` | Markdown Multiverse: Copy as Markdown |
+| `markdownMultiverse.copySlack` | Markdown Multiverse: Copy as Slack |
+| `markdownMultiverse.copyDiscord` | Markdown Multiverse: Copy as Discord |
+| `markdownMultiverse.copyTelegram` | Markdown Multiverse: Copy as Telegram |
+| `markdownMultiverse.copyHtml` | Markdown Multiverse: Copy as HTML |
+
+### Menu wiring
+
+```jsonc
+{
+  "submenus": [
+    { "id": "markdownMultiverse.copyAs", "label": "Copy As" }
+  ],
+  "menus": {
+    "terminal/context": [
+      { "submenu": "markdownMultiverse.copyAs", "group": "3_edit@10" }
+    ],
+    "markdownMultiverse.copyAs": [
+      { "command": "markdownMultiverse.copyClean",    "group": "1_formats@1" },
+      { "command": "markdownMultiverse.copyMarkdown", "group": "1_formats@2" },
+      { "command": "markdownMultiverse.copySlack",    "group": "1_formats@3" },
+      { "command": "markdownMultiverse.copyDiscord",  "group": "1_formats@4" },
+      { "command": "markdownMultiverse.copyTelegram", "group": "1_formats@5" },
+      { "command": "markdownMultiverse.copyHtml",     "group": "1_formats@6" }
+    ]
+  }
+}
+```
 
 ### Settings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `vscodeCopyTool.stripPrompts` | boolean | `false` | Strip common shell prompt prefixes. Destructive. |
-| `vscodeCopyTool.tabWidth` | number | `4` | Spaces per tab. |
-
-## Command implementation shape
-
-```ts
-async function copyViaPipeline(format: (s: string) => string) {
-  const cfg = vscode.workspace.getConfiguration('vscodeCopyTool');
-  const before = await vscode.env.clipboard.readText();
-  await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
-  const raw = await vscode.env.clipboard.readText();
-  if (raw === before) {
-    vscode.window.setStatusBarMessage('Copy Tool: no terminal selection', 2000);
-    return;
-  }
-  const cleaned = format(clean(raw, {
-    stripPrompts: cfg.get('stripPrompts'),
-    tabWidth: cfg.get('tabWidth'),
-  }));
-  await vscode.env.clipboard.writeText(cleaned);
-  vscode.window.setStatusBarMessage('Copy Tool: copied clean text', 2000);
-}
-```
-
-The pipeline is structured as `acquire selection → clean → format → sink`. In v1 the format is identity and the sink is the clipboard. Future commands swap `format` (Slack wrapper, prompt template) or `sink` (new editor, LLM request, shell pipe).
+| `markdownMultiverse.stripPrompts` | boolean | `false` | Strip common shell prompt prefixes. Destructive. |
+| `markdownMultiverse.tabWidth` | number | `4` | Spaces per tab. |
 
 ## Future roadmap (v3+)
 
-The whole point of normalizing terminal output is that once it's clean, it's useful everywhere else.
-
 ### 1. Copy as Prompt
 
-Wrap cleaned output in a user-defined prompt template:
-
-```
-Here is the output of a command I ran. Explain what it means and any errors:
-
-```
-{{cleaned}}
-```
-```
-
-Settings key: `vscodeCopyTool.promptTemplates` — an array of named templates with `{{cleaned}}` as the placeholder. The terminal right-click menu shows a submenu listing them.
+Wrap cleaned output in a user-defined prompt template. Settings key: `markdownMultiverse.promptTemplates` — array of named templates using `{{cleaned}}` as the placeholder. Templates appear in the Copy As submenu under a `2_prompts` group.
 
 ### 2. Send to LLM
 
@@ -124,18 +158,17 @@ Post the cleaned (optionally prompt-wrapped) text directly to a configured endpo
 - OpenAI Chat Completions
 - Local Ollama (`http://localhost:11434`)
 
-API keys stored via VS Code `SecretStorage`, **never** in `settings.json`. Response opens in a new untitled Markdown editor or a side webview.
+API keys stored via VS Code `SecretStorage`, never in `settings.json`. Response opens in a new untitled Markdown editor or a side webview.
 
-### 3. Target-specific copy
+### 3. More target-specific formats
 
-- `Copy for ChatGPT` / `Copy for Claude` / `Copy for Gemini` — each with a tuned preamble.
-- `Copy for GitHub Issue` — wraps in `<details><summary>Terminal output</summary>` collapsible blocks.
-- `Copy for Markdown` — fences plus an optional language hint.
-- `Copy for Jira` — Atlassian wiki markup (`{code}...{code}`).
+- **GitHub Issue** — wraps in `<details><summary>Terminal output</summary>` collapsible blocks.
+- **Jira** — Atlassian wiki markup (`{code}...{code}`).
+- **ChatGPT / Claude / Gemini** — tuned preambles.
 
 ### 4. Pipe through external command
 
-`Copy through…` opens a QuickPick of user-configured shell commands (e.g. `jq`, `glow`, `pbcopy`) and pipes cleaned text through the chosen one. Settings key: `vscodeCopyTool.pipes`. Uses `execFile`-style arg arrays, never shell string concat.
+`Copy through…` opens a QuickPick of user-configured shell commands (e.g. `jq`, `glow`) and pipes cleaned text through the chosen one. Uses `execFile`-style arg arrays, never shell string concat.
 
 ### 5. Save to file
 
@@ -143,41 +176,32 @@ API keys stored via VS Code `SecretStorage`, **never** in `settings.json`. Respo
 
 ### 6. History
 
-Last N cleaned copies stored in `globalState`, surfaced via `Copy Tool: Show History` (QuickPick).
+Last N cleaned copies stored in `globalState`, surfaced via `Markdown Multiverse: Show History` (QuickPick).
 
 ## Verification
 
 ### Unit tests
 
-Tests live in `src/test/clean.test.ts` and run with `node --test`. Because `clean.ts` has no VS Code dependencies, no test host is needed.
+Tests live in `src/test/*.test.ts` and run with `node --test`. 44 tests covering `clean`, `detect`, and every formatter.
 
-Required coverage:
-
-- ANSI-colored `ls --color` output → escapes stripped.
-- `curl` progress bar with `\r` overwrites → only final state survives.
-- `man bash` excerpt with backspace overprinting → clean text.
-- Claude terminal reply with `▎` quote marker → stripped.
-- `tree` box-drawing → pipe table (or passthrough).
-- Wrapped `git log` prose → reflowed.
-- `grep -n` gutter output → NOT reflowed across lines.
-- Prompts stripped only when the option is on.
+```sh
+npm test
+```
 
 ### End-to-end manual test
 
 Press <kbd>F5</kbd> in VS Code to launch the Extension Development Host.
 
-1. Open a terminal. Run `ls --color=always` in a directory with varied file types.
-2. Select a few colored lines. Right-click → **Copy Tool: Copy Clean**.
-3. Paste into a new file. Expect: no escape codes, no trailing spaces, tabs as 4 spaces.
-4. Run `curl -o /dev/null https://speed.cloudflare.com/__down?bytes=10000000` to get a progress bar. Select the progress block. Copy Clean → paste should show only the final state.
-5. Select nothing. Click Copy Clean. Expect: "no terminal selection" status message, clipboard untouched.
-6. `cat` a file with trailing whitespace. Copy Clean → paste should be clean.
+1. Open a terminal. Run `ls --color=always -la`.
+2. Select several lines. Right-click → **Copy As → Markdown**. Paste — expect a ``` ``` ``` fenced block with no ANSI.
+3. Right-click → **Copy As → HTML**. Paste into an HTML file — expect `<pre><code>` with entity-escaped content.
+4. Generate a table: `printf '\u250C\u2500\u2510\n\u2502 a \u2502\n\u2514\u2500\u2518\n'` (or use any command that produces box-drawing output). Select it. Right-click → **Copy As → HTML** — expect `<table>`.
+5. Run `git diff HEAD~1` in a repo. Select hunks. Right-click → **Copy As → Discord** — expect ```` ```diff ```` fence.
+6. Select nothing. Click any Copy As item. Expect: "no terminal selection" status message, clipboard untouched.
 
 ### Marketplace packaging smoke test
 
 ```sh
 npx @vscode/vsce package
-code --install-extension vscode-copy-tool-0.0.1.vsix
+code --install-extension markdown-multiverse-terminal-copy-0.1.0.vsix
 ```
-
-Repeat the E2E tests in a real (non-dev-host) window.
