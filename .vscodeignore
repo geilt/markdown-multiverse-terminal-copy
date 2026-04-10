@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+src/**
+docs/**
+**/*.map
+**/*.ts
+!out/**/*.js
+.gitignore
+.eslintrc*
+tsconfig.json
+**/tsconfig*.json
+**/test/**
+node_modules/**
+!node_modules/ansi-regex/**

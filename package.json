@@ -1,0 +1,75 @@
+{
+  "name": "vscode-copy-tool",
+  "displayName": "Copy Tool",
+  "description": "Right-click in the terminal to copy selected output cleanly — strips ANSI codes, resolves carriage-return overwrites and backspace overprinting, trims trailing whitespace, dedents, and reflows wrapped prose.",
+  "version": "0.0.1",
+  "publisher": "geilt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/geilt/vscode-copy-tool.git"
+  },
+  "bugs": {
+    "url": "https://github.com/geilt/vscode-copy-tool/issues"
+  },
+  "homepage": "https://github.com/geilt/vscode-copy-tool#readme",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "terminal",
+    "clipboard",
+    "copy",
+    "ansi",
+    "cleanup"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscodeCopyTool.copyClean",
+        "title": "Copy Clean",
+        "category": "Copy Tool"
+      }
+    ],
+    "menus": {
+      "terminal/context": [
+        {
+          "command": "vscodeCopyTool.copyClean",
+          "group": "3_edit@10"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Copy Tool",
+      "properties": {
+        "vscodeCopyTool.stripPrompts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Strip common shell prompt prefixes (user@host:~$, PS C:\\>, >>>, $ ). Destructive — may remove non-prompt content that matches these patterns."
+        },
+        "vscodeCopyTool.tabWidth": {
+          "type": "number",
+          "default": 4,
+          "description": "Number of spaces to substitute for tab characters."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "node --test --import tsx 'src/test/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
