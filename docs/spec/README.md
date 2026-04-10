@@ -11,7 +11,8 @@ Published open source at [github.com/geilt/markdown-multiverse-terminal-copy](ht
 ## Phased scope
 
 - **v1 (0.0.1)** — validate the core flow: right-click → clean copy to clipboard. One command, one pipeline. ✅
-- **v2 (0.1.0)** — `Copy As` submenu with 6 format variants (Clean, Markdown, Slack, Discord, Telegram, HTML) plus content classification (table / diff / prose / code). ✅
+- **v2 (0.1.0)** — `Copy As` submenu with 6 format variants plus content classification. ✅
+- **v2.1 (0.2.0)** — rich content pipeline: parse ANSI bold/italic/underline/strike + OSC 8 hyperlinks into a structured intermediate representation; each format renders inline styles natively. URL auto-detection. ✅
 - **v3** — LLM/chat piping: Copy as Prompt, Send to LLM, target-specific copy (GitHub Issue, Jira, ChatGPT, Claude). See **Future roadmap** below.
 
 ## Feasibility: how we read terminal selections
@@ -30,23 +31,35 @@ This uses only stable API. Menu registration uses the `terminal/context` contrib
 
 ## Architecture
 
+**Two tracks:** a flat-text path for `Copy as Clean`, a rich path for everything else.
+
 ```
 raw terminal selection
         │
-        ▼
-    clean(raw)           ← src/clean.ts — pure pipeline (no vscode deps)
+        ├─→ clean(raw): string          ← src/clean.ts — flat-text pipeline
+        │         │                       used by Copy as Clean
+        │         ▼
+        │     clipboard.writeText
         │
-        ▼
-    detect(cleaned)      ← src/detect.ts — classifier
-        │
-        ▼
-    format(cleaned)      ← src/formats/{plain,markdown,slack,discord,telegram,html}.ts
-        │
-        ▼
-  clipboard.writeText
+        └─→ cleanRich(raw): Segment[]    ← src/cleanRich.ts — styled-char pipeline
+                  │                        used by Markdown, Slack, Discord, Telegram, HTML
+                  │
+                  │  1. parseAnsi(raw) → StyledChar[]   (src/parse.ts)
+                  │  2. char-level transforms (CR, BS, tabs, trailing WS, dedent, boxtables, reflow)
+                  │  3. URL auto-linking
+                  │  4. coalesce → Segment[]
+                  │
+                  ▼
+          detectRich(segments) → ContentKind   (src/detect.ts)
+                  │
+                  ▼
+          format(segments, kind) → string      (src/formats/*.ts)
+                  │
+                  ▼
+          clipboard.writeText
 ```
 
-`clean.ts` and `detect.ts` have **zero VS Code imports** so they are trivially testable (pure `node --test`) and reusable by future v3 features (prompt wrapping, LLM calls, history).
+`clean.ts`, `cleanRich.ts`, `parse.ts`, `rich.ts`, `detect.ts`, and every formatter have **zero VS Code imports** — pure libraries that run under `node --test` without any test host.
 
 ## The cleanup pipeline (`src/clean.ts`)
 
@@ -64,41 +77,111 @@ Each step is a pure `(string) => string` composed in order:
 10. `reflowParagraphs` — rejoin soft-wrapped prose while preserving diffs, code, gutter-numbered output, lists, headings, and table rows.
 11. Collapse runs of 3+ blank lines to 2, then `trimEnd()`.
 
+## The rich pipeline (`src/parse.ts` + `src/cleanRich.ts`)
+
+### Types (`src/rich.ts`)
+
+```ts
+interface Style {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  code?: boolean;
+  href?: string;
+}
+
+interface StyledChar { ch: string; style: Style; }
+interface Segment    { text: string; style: Style; }
+```
+
+### ANSI parser (`src/parse.ts`)
+
+`parseAnsi(raw: string): StyledChar[]` walks the input and maintains a current style. Recognized sequences:
+
+- **SGR** (`\e[Nm` / `\e[N;N;...m`):
+  - `0` reset (preserves href)
+  - `1` / `22` bold on/off
+  - `3` / `23` italic on/off
+  - `4` / `24` underline on/off
+  - `9` / `29` strikethrough on/off
+  - `38;5;N` / `38;2;R;G;B` / `48;...` — extended colors, parameters consumed and discarded
+  - All other SGR params (30–37, 40–47, 90–97, 100–107) are ignored (color carries no semantic meaning for chat formats).
+- **OSC 8 hyperlinks** (`\e]8;;URL\e\\` and `\e]8;;\u0007`): set/clear `style.href`.
+- **Other OSC / CSI / ESC sequences** (title, cursor movement, etc.): consumed and discarded.
+- Plain characters become `StyledChar` with the current style.
+
+### Rich cleanup pipeline (`src/cleanRich.ts`)
+
+Operates on `StyledChar[]` throughout, then coalesces into `Segment[]` at the end:
+
+1. `resolveBackspaces` — walk chars, `\b` pops.
+2. `resolveCarriageReturns` — per-line, simulate overwrite.
+3. `stripQuoteMarkers` — remove `▎` chars.
+4. `normalizeTabs` — expand each `\t` to N spaces, copying the current char's style.
+5. `stripTrailingWhitespace` — per-line.
+6. `stripPrompts` (optional) — same patterns as flat pipeline.
+7. `dedentCommon` — detect min indent across non-blank lines, slice chars off the front of each line.
+8. `convertBoxTables` — detect Unicode box-drawing blocks, project to plain text, convert to pipe tables, replace the block with fresh plain StyledChars.
+9. `reflowParagraphs` — line-level join using the same predicates as the flat pipeline, working on styled lines.
+10. `autoLinkUrls` — regex-scan the projected text for `https?://…`, apply `href` style to matched char ranges that don't already have one.
+11. `collapseBlankLines` — runs of 3+ newlines → 2.
+12. `trimTrailingNewlines`.
+13. `coalesce` — adjacent chars with identical styles merged into a single Segment.
+
+The trade-off: style preservation across line-level structural transforms (reflow, box tables) is lossy — reflow joins lines with a plain space, box tables strip all styles inside the block. In practice, terminal output styles rarely straddle these boundaries.
+
 ## The classifier (`src/detect.ts`)
 
 ```ts
 export type ContentKind = 'table' | 'diff' | 'code' | 'prose';
 export function detect(text: string): { kind: ContentKind };
+export function detectRich(segments: Segment[]): { kind: ContentKind };
 ```
 
-Detection order:
+Flat-text detection order:
 
-1. **Table** — every non-blank line matches `^\s*\|.*\|\s*$` AND at least one line is a separator (`| --- |`).
-2. **Diff** — contains a unified-diff hunk header (`@@ -X,Y +X,Y @@`), or 2+ lines start with `+ ` / `- ` and they're ≥50% of the content.
+1. **Table** — every non-blank line matches `^\s*\|.*\|\s*$` AND at least one line is a separator.
+2. **Diff** — contains a `@@ -X,Y +X,Y @@` hunk header, or 2+ lines start with `+ ` / `- ` and they're ≥50% of the content.
 3. **Prose** — 2+ lines, >50% of lines start with a capital letter and end with `.`, `!`, or `?`.
-4. **Code** — default (almost all terminal output).
+4. **Code** — default.
 
-The thresholds are tuned so `ls -la` (which has many `-rw-r--r--` lines) classifies as **code**, not **diff**.
+`detectRich` calls `detect` on the projected plain text, then **upgrades non-table/non-diff content to `prose`** if any segment has inline style (`bold`, `italic`, `underline`, `strike`, `code`, or `href`). This is how Claude Code output (which is full of ANSI bold + OSC 8 links) gets rendered inline instead of fenced.
 
 ## The formats (`src/formats/*.ts`)
 
-Each format is a pure `(cleaned: string) => string` function. They dispatch on `detect(cleaned).kind`:
+Each format is a pure `(segments: Segment[], kind: ContentKind) => string` function (except `toPlain` which still takes a flat string since Copy as Clean uses the flat pipeline).
+
+Dispatch per kind:
 
 | Format | Table | Diff | Code | Prose |
 |--------|-------|------|------|-------|
-| **plain** | passthrough | passthrough | passthrough | passthrough |
-| **markdown** | passthrough (already a pipe table) | ``` fence | ``` fence | passthrough |
-| **slack** | ``` fence | ``` fence | ``` fence | ``` fence |
-| **discord** | ``` fence | ```diff fence | ``` fence | ``` fence |
-| **telegram** | ``` fence + escape | ``` fence + escape | ``` fence + escape | ``` fence + escape |
-| **html** | `<table>` | `<pre><code>` | `<pre><code>` | `<p>` |
+| **plain** | — | — | — | flat string passthrough |
+| **markdown** | plain pipe table | ``` fence | ``` fence | inline styles |
+| **slack** | ``` fence | ``` fence | ``` fence | inline styles |
+| **discord** | ``` fence | ```diff fence | ``` fence | inline styles |
+| **telegram** | fence + escape | fence + escape | fence + escape | inline styles + escape |
+| **html** | `<table>` | `<pre><code>` | `<pre><code>` | `<p>` + inline tags |
+
+### Inline style rendering per format
+
+| Style | Markdown | Slack | Discord | Telegram | HTML |
+|-------|----------|-------|---------|----------|------|
+| bold | `**x**` | `*x*` | `**x**` | `*x*` | `<strong>` |
+| italic | `*x*` | `_x_` | `*x*` | `_x_` | `<em>` |
+| underline | — | — | `__x__` | `__x__` | `<u>` |
+| strike | `~~x~~` | `~x~` | `~~x~~` | `~x~` | `<s>` |
+| inline code | `` `x` `` | `` `x` `` | `` `x` `` | `` `x` `` | `<code>` |
+| link | `[t](u)` | `<u\|t>` | `[t](u)` | `[t](u)` | `<a href>` |
 
 Details:
 
+- **Whitespace-aware wrapping** — all formatters (via `src/formats/wrap.ts`) move leading/trailing whitespace outside the style markers, so `** bold **` (which doesn't render) becomes ` **bold** `.
+- **Inside-out rendering** — inline code / bold / italic / strike wrap first, then the link wraps the whole thing. Result: `[**text**](url)`.
 - **markdown** bumps to ```` when the cleaned content already contains ``` to avoid premature fence closure.
-- **slack** always fences — Slack's `mrkdwn` doesn't support tables at all, so the best rendering for tabular terminal output is a monospace code block.
-- **discord** adds a `diff` language hint when the classifier sees diff content (Discord renders diff syntax with colors).
-- **telegram** uses MarkdownV2 fenced code blocks. Inside a fence, only ``` and `\` need escaping — reserved prose chars don't apply inside code.
+- **slack** always fences code/diff/table — Slack `mrkdwn` doesn't support tables at all, so the best rendering for tabular terminal output is a monospace code block.
+- **discord** adds a `diff` language hint when the classifier sees diff content.
+- **telegram** escapes MarkdownV2 reserved chars (`_*[]()~` `` ` `` `>#+-=|{}.!`) in prose text. Inside code blocks, only `` ` `` and `\` need escaping. Inside link URLs, only `)` and `\`.
 - **html** entity-escapes `& < > " '`. For tables, parses Markdown pipe rows and emits `<table><thead><tr><th>` / `<tbody><tr><td>`. For prose, splits on blank lines and wraps each block in `<p>`.
 
 ## Commands, submenu, and settings

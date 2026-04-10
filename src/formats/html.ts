@@ -1,15 +1,29 @@
-import { detect } from '../detect';
+import { Segment, toPlainText } from '../rich';
+import { ContentKind } from '../detect';
 
-export function toHtml(cleaned: string): string {
-  const { kind } = detect(cleaned);
+export function toHtml(segments: Segment[], kind: ContentKind): string {
   if (kind === 'table') {
-    return pipeTableToHtml(cleaned);
+    return pipeTableToHtml(toPlainText(segments));
   }
-  if (kind === 'prose') {
-    const paragraphs = cleaned.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`);
-    return paragraphs.join('\n');
+  if (kind === 'code' || kind === 'diff') {
+    return `<pre><code>${escapeHtml(toPlainText(segments))}</code></pre>`;
   }
-  return `<pre><code>${escapeHtml(cleaned)}</code></pre>`;
+  const rendered = segments.map(renderSegment).join('');
+  const paragraphs = rendered.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`);
+  return paragraphs.join('\n');
+}
+
+function renderSegment(s: Segment): string {
+  let text = escapeHtml(s.text);
+  if (s.style.code) text = `<code>${text}</code>`;
+  if (s.style.bold) text = `<strong>${text}</strong>`;
+  if (s.style.italic) text = `<em>${text}</em>`;
+  if (s.style.underline) text = `<u>${text}</u>`;
+  if (s.style.strike) text = `<s>${text}</s>`;
+  if (s.style.href) {
+    text = `<a href="${escapeAttr(s.style.href)}">${text}</a>`;
+  }
+  return text;
 }
 
 function escapeHtml(s: string): string {
@@ -19,6 +33,10 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 function pipeTableToHtml(text: string): string {

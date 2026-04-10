@@ -1,7 +1,22 @@
+import { Segment } from './rich';
+
 export type ContentKind = 'table' | 'diff' | 'code' | 'prose';
 
 export interface Detected {
   kind: ContentKind;
+}
+
+export function detectRich(segments: Segment[]): Detected {
+  const plain = segments.map((s) => s.text).join('');
+  const base = detect(plain).kind;
+
+  if (base === 'table' || base === 'diff') return { kind: base };
+
+  const hasStyle = segments.some(
+    (s) => s.style.bold || s.style.italic || s.style.underline || s.style.strike || s.style.code || s.style.href
+  );
+  if (hasStyle) return { kind: 'prose' };
+  return { kind: base };
 }
 
 const PIPE_ROW = /^\s*\|.*\|\s*$/;

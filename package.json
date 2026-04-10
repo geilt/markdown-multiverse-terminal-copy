@@ -2,7 +2,7 @@
   "name": "markdown-multiverse-terminal-copy",
   "displayName": "Markdown Multiverse - Terminal Copy Tool",
   "description": "Right-click in the terminal to copy selected output as Clean, Markdown, Slack, Telegram, Discord, or HTML. Strips ANSI, resolves carriage-return overwrites and backspace overprinting, detects tables, and formats for each destination.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "geilt",
   "license": "MIT",
   "repository": {

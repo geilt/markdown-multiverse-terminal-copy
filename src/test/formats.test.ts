@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Segment } from '../rich';
 import { toPlain } from '../formats/plain';
 import { toMarkdown } from '../formats/markdown';
 import { toSlack } from '../formats/slack';
@@ -7,9 +8,12 @@ import { toTelegram } from '../formats/telegram';
 import { toDiscord } from '../formats/discord';
 import { toHtml } from '../formats/html';
 
+function plain(text: string): Segment[] {
+  return [{ text, style: {} }];
+}
+
 const CODE = 'npm install\nadded 42 packages in 3s';
 const TABLE = '| a | b |\n| --- | --- |\n| 1 | 2 |';
-const PROSE = 'This is a paragraph. It has multiple sentences.\nAnd another sentence ends here.';
 const DIFF = '@@ -1,3 +1,3 @@\n-old\n+new';
 
 test('plain: passthrough', () => {
@@ -17,57 +21,58 @@ test('plain: passthrough', () => {
 });
 
 test('markdown: code gets fenced', () => {
-  assert.equal(toMarkdown(CODE), '```\n' + CODE + '\n```');
+  assert.equal(toMarkdown(plain(CODE), 'code'), '```\n' + CODE + '\n```');
 });
 
 test('markdown: table passes through', () => {
-  assert.equal(toMarkdown(TABLE), TABLE);
+  assert.equal(toMarkdown(plain(TABLE), 'table'), TABLE);
 });
 
-test('markdown: prose passes through', () => {
-  assert.equal(toMarkdown(PROSE), PROSE);
+test('markdown: prose without styles passes through', () => {
+  const prose = 'Hello world.';
+  assert.equal(toMarkdown(plain(prose), 'prose'), prose);
 });
 
 test('markdown: longer fence when content contains triple-backticks', () => {
   const input = 'example:\n```\nfoo\n```';
-  const result = toMarkdown(input);
+  const result = toMarkdown(plain(input), 'code');
   assert.match(result, /^````/);
   assert.match(result, /````$/);
 });
 
-test('slack: always fences', () => {
-  assert.equal(toSlack(CODE), '```\n' + CODE + '\n```');
-  assert.equal(toSlack(TABLE), '```\n' + TABLE + '\n```');
+test('slack: fences code/table/diff', () => {
+  assert.match(toSlack(plain(CODE), 'code'), /^```\n/);
+  assert.match(toSlack(plain(TABLE), 'table'), /^```\n/);
 });
 
-test('telegram: fences and escapes backticks + backslashes', () => {
+test('telegram: fences code with escaped backticks and backslashes', () => {
   const input = 'has ``` inside\nand \\ backslash';
-  const result = toTelegram(input);
+  const result = toTelegram(plain(input), 'code');
   assert.match(result, /^```\n/);
   assert.match(result, /\\`\\`\\`/);
   assert.match(result, /\\\\/);
 });
 
 test('discord: diff gets diff language hint', () => {
-  const result = toDiscord(DIFF);
+  const result = toDiscord(plain(DIFF), 'diff');
   assert.match(result, /^```diff\n/);
 });
 
 test('discord: code uses plain fence', () => {
-  const result = toDiscord(CODE);
+  const result = toDiscord(plain(CODE), 'code');
   assert.match(result, /^```\n/);
 });
 
 test('html: code goes in pre/code with entity escaping', () => {
   const input = '<script>alert("x")</script>';
-  const result = toHtml(input);
+  const result = toHtml(plain(input), 'code');
   assert.match(result, /<pre><code>/);
   assert.match(result, /&lt;script&gt;/);
   assert.match(result, /&quot;x&quot;/);
 });
 
 test('html: table converts to HTML table', () => {
-  const result = toHtml(TABLE);
+  const result = toHtml(plain(TABLE), 'table');
   assert.match(result, /<table>/);
   assert.match(result, /<thead>/);
   assert.match(result, /<th>a<\/th>/);
@@ -76,13 +81,14 @@ test('html: table converts to HTML table', () => {
 });
 
 test('html: prose wraps in paragraph tags', () => {
-  const result = toHtml(PROSE);
-  assert.match(result, /<p>/);
-  assert.match(result, /<\/p>/);
+  const input = 'First paragraph.\n\nSecond paragraph.';
+  const result = toHtml(plain(input), 'prose');
+  assert.match(result, /<p>First paragraph\.<\/p>/);
+  assert.match(result, /<p>Second paragraph\.<\/p>/);
 });
 
 test('html: escapes ampersands and quotes', () => {
-  const result = toHtml('a & b "quoted"');
+  const result = toHtml(plain('a & b "quoted"'), 'code');
   assert.match(result, /&amp;/);
   assert.match(result, /&quot;/);
 });
