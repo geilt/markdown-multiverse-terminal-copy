@@ -1,12 +1,14 @@
-# Markdown Multiverse — Terminal Copy Tool
+# Markdown Multiverse — Design Specification
 
 ## Context
 
-Terminal output pasted into docs, issues, chat, or AI tools is usually ugly: ANSI color codes, carriage-return overwrites from spinners/progress bars, trailing whitespace, backspace overprinting from man pages, box-drawing tables, and soft-wrapped prose.
+Terminal output pasted into docs, issues, chat, or AI tools is usually ugly: ANSI color codes, carriage-return overwrites from spinners/progress bars, trailing whitespace, backspace overprinting from man pages, box-drawing tables, and soft-wrapped prose. Markdown pasted into chat apps loses formatting because each app has its own flavor — Slack uses `*bold*`, Discord uses `**bold**`, Telegram uses MarkdownV2 escaping, and none of them agree on tables.
 
-The web tool at [missionsystems.co.uk/tools/terminal-text-fixer.html](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html) solves the cleanup problem. This project ports that pipeline into VS Code **and** extends it: instead of just one cleaned variant, the extension offers a submenu of destination-aware formats (Markdown, Slack, Discord, Telegram, HTML), each of which wraps the cleaned text appropriately for where it's going.
+The web tool at [missionsystems.co.uk/tools/terminal-text-fixer.html](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html) solves the terminal cleanup problem. **Markdown Multiverse** ports that pipeline into VS Code and extends it: two input pipelines (terminal and editor), six output formats (Clean, Markdown, Slack, Discord, Telegram, HTML), and a rich intermediate representation that preserves inline styles end-to-end.
 
-Published open source at [github.com/geilt/markdown-multiverse-terminal-copy](https://github.com/geilt/markdown-multiverse-terminal-copy) and on the VS Code Marketplace.
+Published open source at [github.com/geilt/markdown-multiverse-vscode](https://github.com/geilt/markdown-multiverse-vscode) and on the VS Code Marketplace under the publisher `geilt`.
+
+**Brand umbrella:** "Markdown Multiverse" is the brand for a family of tools that convert between text formats. This repository holds the VS Code extension; future siblings may include a CLI (`markdown-multiverse-cli`) and a web tool (at markdown-multiverse.com).
 
 ## Phased scope
 

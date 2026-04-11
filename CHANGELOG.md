@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - Unreleased
+
+### Changed
+- **Rebranded to "Markdown Multiverse"** (displayName).
+- **Package name:** `markdown-multiverse-terminal-copy` → `markdown-multiverse-vscode`. The `-vscode` suffix leaves room for sibling tools under the same brand (CLI, web) later.
+- **Repo:** `geilt/markdown-multiverse-terminal-copy` → `geilt/markdown-multiverse-vscode`. GitHub auto-redirects the old URL.
+- **Description** rewritten to cover both pipelines (terminal + editor), not just terminal copy.
+
+### Added
+- **README overhaul** — purpose, two-pipeline explanation, feature matrices, keyboard shortcut docs, architecture diagram, roadmap covering near-term (prompt templates, LLM piping, target-specific formats), medium-term (external pipes, history, content-based gating), and long-term (CLI, web) plans.
+- **Keyboard shortcut documentation** — every command is already bindable via VS Code's built-in shortcuts panel; the README now explains how, with a `when`-clause example for scoping shortcuts to terminal or editor focus.
+
 ## [0.3.0] - Unreleased
 
 ### Added

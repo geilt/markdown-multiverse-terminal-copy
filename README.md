@@ -1,89 +1,196 @@
-# Markdown Multiverse — Terminal Copy Tool
+# Markdown Multiverse
 
-Right-click in the VS Code integrated terminal to copy selected output, **cleaned up and formatted for wherever you're pasting it**: Markdown, Slack, Discord, Telegram, HTML, or plain.
+> Copy what you see, paste where you need it.
 
-Terminal output is usually ugly — ANSI colors, progress-bar overwrites, tab stops, wrapped prose, trailing whitespace. Markdown Multiverse strips all that, then **parses ANSI bold / italic / underline / strike / OSC 8 hyperlinks** into an intermediate representation and re-renders them as format-native inline syntax:
+A VS Code extension that takes selected text from your terminal or markdown editor and copies it in the format you actually need — Slack-flavored, Discord-flavored, Telegram, HTML, or plain — with all the ugly bits (ANSI escapes, progress bars, wrapped lines) cleaned up automatically.
 
-- Bold terminal text → `**bold**` (Markdown), `*bold*` (Slack), `<strong>` (HTML), and so on.
-- OSC 8 hyperlinks from Claude Code, `git log`, etc. → `[text](url)` / `<url|text>` / `<a href>`.
-- Plain `https://…` URLs are auto-detected and upgraded to links even without OSC 8.
-- Tables get pipe tables for Markdown, real `<table>` for HTML, fences for chat apps.
+## Why
 
-**Copy as Clean** still gives you pure plain text with nothing wrapped — useful when you just want the raw content.
+Terminal output and markdown look great in their native environment and awful everywhere else. Copy a nicely colored `git log` into Slack and you get a wall of `\e[33m` garbage. Copy a markdown heading into Discord and it loses its formatting. Copy a box-drawing table anywhere non-monospace and alignment breaks.
 
-Inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html), built directly into VS Code.
+Markdown Multiverse fixes this at the copy step. Instead of one "Copy" that gives you the raw bytes, you get a **Copy As** submenu with destination-aware variants. Each variant knows how to render headings, lists, links, bold/italic, tables, and code blocks natively for its target.
 
-## Usage
+## Two pipelines
 
-### In the terminal
+### 1. Terminal → anywhere
 
-1. Select text in any integrated terminal.
-2. Right-click → **Copy As** → pick your destination (Clean, Markdown, Slack, Discord, Telegram, HTML).
-3. Paste anywhere.
+Right-click a terminal selection → **Copy As**:
 
-### In a markdown editor
+- **Clean** — pure plain text with ANSI stripped, carriage-return overwrites resolved, backspace overprinting resolved, tables reflowed, trailing whitespace trimmed. Pipe it into anything.
+- **Markdown** — fences code/diff blocks, passes through prose, preserves detected tables.
+- **Slack** (mrkdwn), **Discord**, **Telegram** (MarkdownV2), **HTML** — each applies destination-native inline styles.
 
-1. Open any `.md` file.
-2. Select markdown (or leave nothing selected to convert the whole document).
-3. Right-click → **Copy As** → pick Slack, Discord, Telegram, or HTML.
-4. Paste into the target app — headings, lists, code blocks, links, bold/italic all get rewritten to the destination's native syntax.
+When the terminal output contains ANSI bold, italic, underline, strikethrough, or OSC 8 hyperlinks (hi Claude Code, `git log`, modern CLIs), those styles are parsed into a structured intermediate representation and re-emitted as the target's native syntax:
 
-The editor submenu only appears in markdown files. Clean and Markdown entries are omitted since neither makes sense for markdown source.
+| Style in terminal | Markdown | Slack | Discord | HTML |
+|-------------------|----------|-------|---------|------|
+| ANSI bold | `**bold**` | `*bold*` | `**bold**` | `<strong>` |
+| ANSI italic | `*italic*` | `_italic_` | `*italic*` | `<em>` |
+| OSC 8 link | `[text](url)` | `<url\|text>` | `[text](url)` | `<a href>` |
+| Inline code | `` `code` `` | `` `code` `` | `` `code` `` | `<code>` |
 
-### Formats
+Plain `https://…` URLs are auto-detected and upgraded to links even when the terminal doesn't emit OSC 8 hyperlinks.
 
-| Format | Prose (with inline styles) | Code / diff | Table |
-|--------|---------------------------|-------------|-------|
-| **Clean** | plain text | plain text | plain text |
-| **Markdown** | `**bold**` `*italic*` `` `code` `` `[text](url)` | ``` fence | pipe table |
-| **Slack** | `*bold*` `_italic_` `` `code` `` `<url\|text>` | ``` fence | ``` fence |
-| **Discord** | `**bold**` `*italic*` `__underline__` `[text](url)` | ```diff fence | ``` fence |
-| **Telegram** | MarkdownV2 with reserved chars escaped | ``` fence | ``` fence |
-| **HTML** | `<strong>`, `<em>`, `<a href>`, `<code>` | `<pre><code>` | `<table>` |
+### 2. Markdown file → anywhere
 
-### Content detection
+Right-click a selection in any `.md` file → **Copy As**:
 
-The extension runs the cleaned text through a classifier that recognizes:
+- **Slack** — headings become bold lines, `- ` bullets become `• `, links become `<url|text>`, code blocks stay fenced.
+- **Discord** — keeps native `#` headings (Discord supports them), markdown bullets, `[text](url)` links, ```lang fenced code.
+- **Telegram** — MarkdownV2 with reserved chars escaped, `*heading*` lines, `>` quotes, fenced code.
+- **HTML** — semantic `<h1>`-`<h6>`, `<ul>`/`<ol>`, `<blockquote>`, `<pre><code class="language-…">`, `<table>` with real `<thead>`/`<tbody>`.
 
-- **Pipe tables** (including box-drawing tables already converted during cleanup) — HTML renders as real `<table>`, Markdown passes through.
-- **Diff output** (unified diff with `@@` hunks or `-` / `+` prefix lines) — Discord adds a `diff` language hint.
-- **Prose with inline styles** — whenever the content contains ANSI bold, italic, underline, strikethrough, inline code, or OSC 8 hyperlinks, it's treated as rich prose and rendered inline (no fence).
-- **Code / terminal output** (the default) — fenced in code blocks for every chat target.
+The editor submenu only appears when `editorLangId == markdown`, so it won't clutter your right-click menu in other file types. There's no Clean or Markdown entry since markdown source is already clean markdown.
 
-## What gets cleaned
+If nothing is selected when you right-click, the entire file is converted.
 
-- **ANSI escape codes** — SGR colors, cursor movement, OSC title sequences, bracketed paste markers.
-- **Carriage-return overwrites** — progress bars and spinners collapse to their final state.
-- **Backspace overprinting** — man-page bold/underline becomes plain text.
-- **Trailing whitespace** — per-line trim.
-- **Tab normalization** — tabs become consistent spaces (configurable).
-- **Common indentation** — shared leading whitespace gets dedented.
-- **Box-drawing tables** — Unicode `┌─┬┐` tables convert to Markdown pipe tables.
-- **Soft-wrapped prose** — rejoined into single paragraphs (diffs, code, and numbered output are preserved).
-- **Claude quote markers** — the `▎` character gets stripped.
+## Content classification
+
+A small classifier decides how to render each chunk:
+
+| Kind | How it's detected | What formats do with it |
+|------|-------------------|-------------------------|
+| **table** | pipe-table rows + separator line | HTML → `<table>`, others → fenced |
+| **diff** | `@@ -X,Y +X,Y @@` hunk or ≥50% `+ `/`- ` lines | Discord → ```diff fence, others → plain fence |
+| **prose** | sentences starting with capitals, OR any inline styles present | inline styles rendered, no fence |
+| **code** | default | fenced in every chat target |
+
+The classifier is deliberately conservative: `ls -la` output (with many `-rw-r--r--` lines) stays classified as **code**, not diff.
+
+## Cleanup pipeline
+
+Whether you pick Clean, Markdown, or any chat target, the terminal input first goes through:
+
+- Strip ANSI color codes, cursor movement, OSC title sequences, bracketed-paste markers.
+- Resolve carriage-return overwrites (progress bars and spinners collapse to their final state).
+- Resolve backspace overprinting (man-page bold becomes plain text).
+- Strip the `▎` U+258E block-quote character Claude Code uses in quoted responses.
+- Normalize tabs to spaces (configurable width).
+- Trim trailing whitespace.
+- Strip common shell prompts (optional, off by default — destructive).
+- Dedent shared leading whitespace.
+- Convert Unicode box-drawing tables to Markdown pipe tables.
+- Reflow soft-wrapped prose while preserving diffs, code, gutter-numbered output, and lists.
+- Auto-link plain URLs.
+- Collapse runs of 3+ blank lines to 2.
 
 ## Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `markdownMultiverse.stripPrompts` | `false` | Strip common shell prompt prefixes (`user@host:~$`, `PS C:\>`, `>>>`, `$`). Destructive. |
+| `markdownMultiverse.stripPrompts` | `false` | Strip common shell prompt prefixes (`user@host:~$`, `PS C:\>`, `>>>`, `$`, `#`). Destructive. |
 | `markdownMultiverse.tabWidth` | `4` | Number of spaces to substitute for tab characters. |
+
+## Keyboard shortcuts
+
+Every command is bindable via VS Code's built-in keyboard shortcut system. **No default bindings are set**, so there are no conflicts with other extensions.
+
+To bind a shortcut:
+
+1. Open **Preferences → Keyboard Shortcuts** (<kbd>⌘K ⌘S</kbd> on macOS, <kbd>Ctrl+K Ctrl+S</kbd> elsewhere).
+2. Search for "Markdown Multiverse".
+3. Click the pencil icon next to a command and press your desired key combination.
+
+All commands at a glance:
+
+| Command | Description |
+|---------|-------------|
+| `markdownMultiverse.copyClean` | Terminal → plain text |
+| `markdownMultiverse.copyMarkdown` | Terminal → Markdown |
+| `markdownMultiverse.copySlack` | Terminal → Slack mrkdwn |
+| `markdownMultiverse.copyDiscord` | Terminal → Discord |
+| `markdownMultiverse.copyTelegram` | Terminal → Telegram MarkdownV2 |
+| `markdownMultiverse.copyHtml` | Terminal → HTML |
+| `markdownMultiverse.editorCopySlack` | Markdown file → Slack |
+| `markdownMultiverse.editorCopyDiscord` | Markdown file → Discord |
+| `markdownMultiverse.editorCopyTelegram` | Markdown file → Telegram |
+| `markdownMultiverse.editorCopyHtml` | Markdown file → HTML |
+
+Tip: if you want to scope a shortcut to "only in terminal" or "only in markdown files", use VS Code's `when` clause in your `keybindings.json`:
+
+```jsonc
+{
+  "key": "cmd+shift+c",
+  "command": "markdownMultiverse.copyClean",
+  "when": "terminalFocus"
+}
+```
+
+## Architecture
+
+```
+┌─ Terminal selection (raw ANSI bytes)
+│      │
+│      ├─→ clean(raw) ────→ string             (Copy as Clean)
+│      │
+│      └─→ cleanRich(raw) ─→ Segment[]         (all other formats)
+│              │                  │
+│              │                  ├─ ANSI parser (parse.ts)
+│              │                  ├─ Styled-char pipeline
+│              │                  └─ URL auto-linking
+│              ▼
+│          detectRich → ContentKind
+│              │
+│              └─→ format(segments, kind) → string
+│
+└─ Editor selection (markdown source)
+       │
+       ├─→ parseMarkdown(text) → MdBlock[]
+       │                              │
+       │                              └─ block AST with Segment[] for inline
+       ▼
+   mdTo{Slack,Discord,Telegram,Html}(blocks) → string
+```
+
+Every core library (`clean.ts`, `cleanRich.ts`, `parse.ts`, `parseMd.ts`, `rich.ts`, `detect.ts`, all formatters) has **zero VS Code imports**, so the entire pipeline runs under `node --test` with no test host. See [`docs/spec/README.md`](docs/spec/README.md) for the full design doc.
 
 ## Roadmap
 
-- **v3** — Copy as Prompt (user-defined LLM prompt templates), Send to LLM (Anthropic / OpenAI / Ollama), target-specific copy (GitHub Issue, Jira).
+### Near term
 
-See [`docs/spec/README.md`](docs/spec/README.md) for the full design.
+- **Copy as Prompt** — wrap any selection in a user-defined LLM prompt template (`{{cleaned}}` placeholder). Templates stored in settings, available as submenu entries.
+- **Send to LLM** — post the cleaned/converted text directly to Anthropic Messages API, OpenAI Chat Completions, or a local Ollama endpoint. API keys in `SecretStorage`. Response opens in a side panel or new editor.
+- **Target-specific formats** — GitHub Issue (`<details>` collapsibles), Jira wiki markup (`{code}…{code}`), ChatGPT/Claude/Gemini with tuned preambles.
+
+### Medium term
+
+- **Pipe through external command** — `Copy through…` quickpick of user-configured shell commands (e.g. `jq`, `glow`, `pbcopy`) with `execFile`-style arg arrays.
+- **Copy to new editor** — for long outputs, open the converted text in a new untitled editor instead of the clipboard.
+- **History** — last N copies stored in `globalState`, surfaced via `Markdown Multiverse: Show History` quickpick.
+- **Content-based editor gating** — show the editor Copy As submenu not just in `.md` files but anywhere the selected text looks like markdown.
+
+### Long term
+
+- **Markdown Multiverse CLI** — same pipeline as a standalone `npx` tool for shell scripts and CI.
+- **Markdown Multiverse Web** — browser-based version at markdown-multiverse.com so you can paste any text and convert it without installing anything.
 
 ## Development
 
 ```sh
+git clone https://github.com/geilt/markdown-multiverse-vscode.git
+cd markdown-multiverse-vscode
 npm install
 npm run compile
 npm test
 ```
 
-Press <kbd>F5</kbd> in VS Code to launch an Extension Development Host with the extension loaded.
+Press <kbd>F5</kbd> in VS Code to launch an Extension Development Host with the extension loaded. See [`docs/spec/README.md`](docs/spec/README.md) for architecture details.
+
+### Testing
+
+```sh
+npm test
+```
+
+126 tests covering the ANSI parser, terminal cleanup pipeline, rich formatters, markdown parser, and markdown renderers. Every test runs under `node --test` with no VS Code dependency.
+
+## Contributing
+
+PRs welcome. Open an issue first for anything larger than a bug fix so we can align on approach.
+
+## Credits
+
+Cleanup pipeline inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk/tools/terminal-text-fixer.html) by Mission Systems.
 
 ## License
 

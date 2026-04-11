@@ -1,18 +1,18 @@
 {
-  "name": "markdown-multiverse-terminal-copy",
-  "displayName": "Markdown Multiverse - Terminal Copy Tool",
-  "description": "Right-click in the terminal to copy selected output as Clean, Markdown, Slack, Telegram, Discord, or HTML. Strips ANSI, resolves carriage-return overwrites and backspace overprinting, detects tables, and formats for each destination.",
-  "version": "0.3.0",
+  "name": "markdown-multiverse-vscode",
+  "displayName": "Markdown Multiverse",
+  "description": "Copy terminal output or markdown source in the format you actually need. Right-click in the terminal for Clean/Markdown/Slack/Discord/Telegram/HTML with ANSI styles preserved as native syntax. Right-click in any .md file to convert markdown to the chat app of your choice.",
+  "version": "0.4.0",
   "publisher": "geilt",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/geilt/markdown-multiverse-terminal-copy.git"
+    "url": "https://github.com/geilt/markdown-multiverse-vscode.git"
   },
   "bugs": {
-    "url": "https://github.com/geilt/markdown-multiverse-terminal-copy/issues"
+    "url": "https://github.com/geilt/markdown-multiverse-vscode/issues"
   },
-  "homepage": "https://github.com/geilt/markdown-multiverse-terminal-copy#readme",
+  "homepage": "https://github.com/geilt/markdown-multiverse-vscode#readme",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -29,7 +29,9 @@
     "slack",
     "discord",
     "telegram",
-    "html"
+    "html",
+    "convert",
+    "formatter"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
