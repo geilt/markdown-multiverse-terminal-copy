@@ -1,5 +1,6 @@
 import { Segment, toPlainText } from '../rich';
 import { ContentKind } from '../detect';
+import { MdBlock } from '../parseMd';
 
 export function toHtml(segments: Segment[], kind: ContentKind): string {
   if (kind === 'table') {
@@ -11,6 +12,48 @@ export function toHtml(segments: Segment[], kind: ContentKind): string {
   const rendered = segments.map(renderSegment).join('');
   const paragraphs = rendered.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`);
   return paragraphs.join('\n');
+}
+
+export function mdToHtml(blocks: MdBlock[]): string {
+  return blocks.map(renderBlock).join('\n');
+}
+
+function renderBlock(block: MdBlock): string {
+  switch (block.type) {
+    case 'heading':
+      return `<h${block.level}>${block.segments.map(renderSegment).join('')}</h${block.level}>`;
+    case 'paragraph':
+      return `<p>${block.segments.map(renderSegment).join('')}</p>`;
+    case 'code': {
+      const cls = block.lang ? ` class="language-${escapeAttr(block.lang)}"` : '';
+      return `<pre><code${cls}>${escapeHtml(block.text)}</code></pre>`;
+    }
+    case 'blockquote':
+      return `<blockquote>\n${block.blocks.map(renderBlock).join('\n')}\n</blockquote>`;
+    case 'list': {
+      const tag = block.ordered ? 'ol' : 'ul';
+      const items = block.items
+        .map((item) => `  <li>${item.map(renderBlock).join('\n').replace(/^<p>(.*)<\/p>$/s, '$1')}</li>`)
+        .join('\n');
+      return `<${tag}>\n${items}\n</${tag}>`;
+    }
+    case 'hr':
+      return '<hr>';
+    case 'table': {
+      const thead = `<thead><tr>${block.header
+        .map((seg) => `<th>${seg.map(renderSegment).join('')}</th>`)
+        .join('')}</tr></thead>`;
+      const tbody = block.rows.length
+        ? `<tbody>${block.rows
+            .map(
+              (row) =>
+                `<tr>${row.map((seg) => `<td>${seg.map(renderSegment).join('')}</td>`).join('')}</tr>`
+            )
+            .join('')}</tbody>`
+        : '';
+      return `<table>${thead}${tbody}</table>`;
+    }
+  }
 }
 
 function renderSegment(s: Segment): string {

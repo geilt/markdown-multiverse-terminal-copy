@@ -13,6 +13,7 @@ Published open source at [github.com/geilt/markdown-multiverse-terminal-copy](ht
 - **v1 (0.0.1)** — validate the core flow: right-click → clean copy to clipboard. One command, one pipeline. ✅
 - **v2 (0.1.0)** — `Copy As` submenu with 6 format variants plus content classification. ✅
 - **v2.1 (0.2.0)** — rich content pipeline: parse ANSI bold/italic/underline/strike + OSC 8 hyperlinks into a structured intermediate representation; each format renders inline styles natively. URL auto-detection. ✅
+- **v2.2 (0.3.0)** — editor-side Copy As submenu in markdown files. Hand-rolled markdown parser produces a block AST; each format walks it with format-native block syntax (headings, lists, blockquotes, tables, code blocks). ✅
 - **v3** — LLM/chat piping: Copy as Prompt, Send to LLM, target-specific copy (GitHub Issue, Jira, ChatGPT, Claude). See **Future roadmap** below.
 
 ## Feasibility: how we read terminal selections
@@ -184,18 +185,70 @@ Details:
 - **telegram** escapes MarkdownV2 reserved chars (`_*[]()~` `` ` `` `>#+-=|{}.!`) in prose text. Inside code blocks, only `` ` `` and `\` need escaping. Inside link URLs, only `)` and `\`.
 - **html** entity-escapes `& < > " '`. For tables, parses Markdown pipe rows and emits `<table><thead><tr><th>` / `<tbody><tr><td>`. For prose, splits on blank lines and wraps each block in `<p>`.
 
+## The markdown pipeline (`src/parseMd.ts`)
+
+A separate pipeline for the editor context menu. Input is markdown source, not ANSI-styled terminal output.
+
+### Block AST
+
+```ts
+type MdBlock =
+  | { type: 'heading'; level: number; segments: Segment[] }
+  | { type: 'paragraph'; segments: Segment[] }
+  | { type: 'code'; lang: string; text: string }
+  | { type: 'blockquote'; blocks: MdBlock[] }
+  | { type: 'list'; ordered: boolean; items: MdBlock[][] }
+  | { type: 'hr' }
+  | { type: 'table'; header: Segment[][]; rows: Segment[][][] };
+```
+
+Inline content uses the same `Segment[]` type as the terminal pipeline. This means inline-rendering helpers (`renderSegment` in each format file) are shared between the terminal rich path and the markdown path.
+
+### Parser structure
+
+- **Block parser** (`parseBlocks`) — line-based state machine. Recognizes fenced code, ATX headings, horizontal rules, blockquotes, tables, lists, and paragraphs. Paragraphs collect non-blank lines until they hit a block start or blank line.
+- **Inline parser** (`parseInline`) — single-pass character scanner. Recognizes inline code (atomic, highest priority), links `[text](url)` with balanced paren handling, bold `**…**` / `__…__`, italic `*…*` / `_…_`, strikethrough `~~…~~`. Nested styles recurse through `parseInline` on the inner text.
+
+### Per-format block renderers
+
+Each format file exports a `mdTo*(blocks: MdBlock[]): string` function that walks the AST:
+
+| Block | Slack | Discord | Telegram (MarkdownV2) | HTML |
+|-------|-------|---------|------------------------|------|
+| heading | `*heading*` line | `# heading` native | `*heading*` line | `<h1>`…`<h6>` |
+| paragraph | inline segments | inline segments | inline segments + escape | `<p>` |
+| code block | ``` fence | ```lang fence | ``` fence + escape | `<pre><code class="language-…">` |
+| blockquote | `> ` prefix | `> ` prefix | `>` prefix | `<blockquote>` |
+| unordered list | `• ` items | `- ` items | `• ` items | `<ul><li>` |
+| ordered list | `1. 2. 3.` | `1. 2. 3.` | `1\. 2\. 3\.` (escaped) | `<ol><li>` |
+| horizontal rule | `----` | `---` | `\-\-\-` | `<hr>` |
+| table | fenced plain | fenced plain | fenced plain | `<table><thead><tbody>` |
+
+Slack / Discord / Telegram don't have real table support, so tables fall back to fenced monospace. Inline segments within table cells still get rendered through each format's `renderSegment` helper (except Telegram, where we emit plain text inside the code fence to avoid escape pollution).
+
 ## Commands, submenu, and settings
 
-### Commands
+### Terminal commands
 
 | Command | Title |
 |---------|-------|
-| `markdownMultiverse.copyClean` | Markdown Multiverse: Copy as Clean |
-| `markdownMultiverse.copyMarkdown` | Markdown Multiverse: Copy as Markdown |
-| `markdownMultiverse.copySlack` | Markdown Multiverse: Copy as Slack |
-| `markdownMultiverse.copyDiscord` | Markdown Multiverse: Copy as Discord |
-| `markdownMultiverse.copyTelegram` | Markdown Multiverse: Copy as Telegram |
-| `markdownMultiverse.copyHtml` | Markdown Multiverse: Copy as HTML |
+| `markdownMultiverse.copyClean` | Copy as Clean |
+| `markdownMultiverse.copyMarkdown` | Copy as Markdown |
+| `markdownMultiverse.copySlack` | Copy as Slack |
+| `markdownMultiverse.copyDiscord` | Copy as Discord |
+| `markdownMultiverse.copyTelegram` | Copy as Telegram |
+| `markdownMultiverse.copyHtml` | Copy as HTML |
+
+### Editor commands (markdown files only)
+
+| Command | Title |
+|---------|-------|
+| `markdownMultiverse.editorCopySlack` | Copy Markdown as Slack |
+| `markdownMultiverse.editorCopyDiscord` | Copy Markdown as Discord |
+| `markdownMultiverse.editorCopyTelegram` | Copy Markdown as Telegram |
+| `markdownMultiverse.editorCopyHtml` | Copy Markdown as HTML |
+
+The editor submenu is gated by `editorLangId == markdown` in the VS Code `when`-clause system, so it only appears when the user right-clicks inside a markdown file. No `Copy as Clean` or `Copy as Markdown` entries since markdown source is already clean markdown.
 
 ### Menu wiring
 

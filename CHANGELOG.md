@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - Unreleased
+
+### Added
+- **Editor-side Copy As submenu.** Right-click inside a `.md` file to convert the selected markdown (or the whole document if nothing is selected) into Slack, Discord, Telegram, or HTML.
+  - Gated on `editorLangId == markdown` — the submenu only appears in markdown files.
+  - No `Copy as Clean` or `Copy as Markdown` entries since neither applies to markdown source.
+- `src/parseMd.ts` — hand-rolled markdown parser (zero dependencies). Produces block-level AST with `Segment[]` for inline content.
+  - Block types: heading, paragraph, code, blockquote, list, hr, table.
+  - Inline: bold (`**` / `__`), italic (`*` / `_`), inline code, strikethrough, links, nested styles.
+- `mdToSlack`, `mdToDiscord`, `mdToTelegram`, `mdToHtml` — each format file gets a block walker:
+  - **Slack:** headings as `*bold lines*`, bullet lists, blockquotes, fenced code, fenced tables.
+  - **Discord:** native `# heading` syntax (up to `###`), markdown lists, blockquotes, fenced code with language hints, fenced tables.
+  - **Telegram:** MarkdownV2 with reserved-char escaping, fenced code, `>` blockquotes, fenced tables.
+  - **HTML:** semantic `<h1>`-`<h6>`, `<p>`, `<ul>`/`<ol>`, `<blockquote>`, `<pre><code class="language-…">`, `<table>`, `<hr>`, full entity escaping.
+- 42 new tests covering parser + all four markdown renderers (126 total).
+
 ## [0.2.0] - Unreleased
 
 ### Added

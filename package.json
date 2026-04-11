@@ -2,7 +2,7 @@
   "name": "markdown-multiverse-terminal-copy",
   "displayName": "Markdown Multiverse - Terminal Copy Tool",
   "description": "Right-click in the terminal to copy selected output as Clean, Markdown, Slack, Telegram, Discord, or HTML. Strips ANSI, resolves carriage-return overwrites and backspace overprinting, detects tables, and formats for each destination.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "geilt",
   "license": "MIT",
   "repository": {
@@ -64,11 +64,35 @@
         "command": "markdownMultiverse.copyHtml",
         "title": "Copy as HTML",
         "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.editorCopySlack",
+        "title": "Copy Markdown as Slack",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.editorCopyDiscord",
+        "title": "Copy Markdown as Discord",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.editorCopyTelegram",
+        "title": "Copy Markdown as Telegram",
+        "category": "Markdown Multiverse"
+      },
+      {
+        "command": "markdownMultiverse.editorCopyHtml",
+        "title": "Copy Markdown as HTML",
+        "category": "Markdown Multiverse"
       }
     ],
     "submenus": [
       {
         "id": "markdownMultiverse.copyAs",
+        "label": "Copy As"
+      },
+      {
+        "id": "markdownMultiverse.editorCopyAs",
         "label": "Copy As"
       }
     ],
@@ -77,6 +101,13 @@
         {
           "submenu": "markdownMultiverse.copyAs",
           "group": "3_edit@10"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "markdownMultiverse.editorCopyAs",
+          "group": "9_cutcopypaste@10",
+          "when": "editorLangId == markdown"
         }
       ],
       "markdownMultiverse.copyAs": [
@@ -103,6 +134,24 @@
         {
           "command": "markdownMultiverse.copyHtml",
           "group": "1_formats@6"
+        }
+      ],
+      "markdownMultiverse.editorCopyAs": [
+        {
+          "command": "markdownMultiverse.editorCopySlack",
+          "group": "1_formats@1"
+        },
+        {
+          "command": "markdownMultiverse.editorCopyDiscord",
+          "group": "1_formats@2"
+        },
+        {
+          "command": "markdownMultiverse.editorCopyTelegram",
+          "group": "1_formats@3"
+        },
+        {
+          "command": "markdownMultiverse.editorCopyHtml",
+          "group": "1_formats@4"
         }
       ]
     },

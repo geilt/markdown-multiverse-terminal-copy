@@ -1,5 +1,6 @@
 import { Segment, toPlainText } from '../rich';
 import { ContentKind } from '../detect';
+import { MdBlock } from '../parseMd';
 import { wrap } from './wrap';
 
 const TG_RESERVED = /[_*\[\]()~`>#+\-=|{}.!]/g;
@@ -10,6 +11,43 @@ export function toTelegram(segments: Segment[], kind: ContentKind): string {
     return '```\n' + body + '\n```';
   }
   return segments.map(renderSegment).join('');
+}
+
+export function mdToTelegram(blocks: MdBlock[]): string {
+  return blocks.map(renderBlock).join('\n\n').trimEnd();
+}
+
+function renderBlock(block: MdBlock): string {
+  switch (block.type) {
+    case 'heading':
+      return '*' + block.segments.map(renderSegment).join('') + '*';
+    case 'paragraph':
+      return block.segments.map(renderSegment).join('');
+    case 'code':
+      return '```\n' + escapeTgCode(block.text) + '\n```';
+    case 'blockquote':
+      return block.blocks
+        .map(renderBlock)
+        .join('\n\n')
+        .split('\n')
+        .map((l) => '>' + l)
+        .join('\n');
+    case 'list':
+      return block.items
+        .map((item, idx) => {
+          const marker = block.ordered ? escapeTgText(`${idx + 1}.`) + ' ' : '• ';
+          const body = item.map(renderBlock).join('\n');
+          return marker + body;
+        })
+        .join('\n');
+    case 'hr':
+      return escapeTgText('---');
+    case 'table': {
+      const plainHeader = block.header.map((seg) => toPlainText(seg)).join(' | ');
+      const plainRows = block.rows.map((r) => r.map((seg) => toPlainText(seg)).join(' | '));
+      return '```\n' + [plainHeader, ...plainRows].join('\n') + '\n```';
+    }
+  }
 }
 
 function escapeTgText(s: string): string {

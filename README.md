@@ -15,9 +15,20 @@ Inspired by the excellent [Terminal Text Fixer](https://www.missionsystems.co.uk
 
 ## Usage
 
+### In the terminal
+
 1. Select text in any integrated terminal.
-2. Right-click → **Copy As** → pick your destination.
+2. Right-click → **Copy As** → pick your destination (Clean, Markdown, Slack, Discord, Telegram, HTML).
 3. Paste anywhere.
+
+### In a markdown editor
+
+1. Open any `.md` file.
+2. Select markdown (or leave nothing selected to convert the whole document).
+3. Right-click → **Copy As** → pick Slack, Discord, Telegram, or HTML.
+4. Paste into the target app — headings, lists, code blocks, links, bold/italic all get rewritten to the destination's native syntax.
+
+The editor submenu only appears in markdown files. Clean and Markdown entries are omitted since neither makes sense for markdown source.
 
 ### Formats
 
